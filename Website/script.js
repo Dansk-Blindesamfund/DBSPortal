@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const wordPortalButton = document.querySelector(".open-word-portal");
   const excelPortalButton = document.querySelector(".open-excel-portal");
   const teamsPortalButton = document.querySelector(".open-teams-portal");
+  const casesPortalButton = document.querySelector(".open-cases-portal");
   const resourceStatus = document.getElementById("resource-status");
   const sharepointPortalButton = document.querySelector(".open-sharepoint-portal");
   const oneDrivePortalButton = document.querySelector(".open-onedrive-portal");
@@ -34,6 +35,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const teamsList = document.getElementById("teams-list");
   const teamsChannelList = document.getElementById("teams-channel-list");
   const teamsChannelsTitle = document.getElementById("teams-channels-title");
+  const casesView = document.getElementById("cases-view");
+  const casesRefreshButton = document.getElementById("cases-refresh");
+  const casesStatus = document.getElementById("cases-status");
+  const casesFilterOpenButton = document.getElementById("cases-filter-open");
+  const casesFilterClosedButton = document.getElementById("cases-filter-closed");
+  const casesFilterAllButton = document.getElementById("cases-filter-all");
+  const casesListTitle = document.getElementById("cases-list-title");
+  const casesCount = document.getElementById("cases-count");
+  const casesList = document.getElementById("cases-list");
+  const casesDetail = document.getElementById("cases-detail");
   const formsView = document.getElementById("forms-view");
   const formsTitle = document.getElementById("forms-title");
   const formsDescription = document.getElementById("forms-description");
@@ -55,6 +66,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const mailAttachmentsInput = document.getElementById("mail-attachments");
   const mailPreviewHtmlButton = document.getElementById("mail-preview-html");
   const mailRefreshInboxButton = document.getElementById("mail-refresh-inbox");
+  const mailCalendarRefreshButton = document.getElementById("mail-calendar-refresh");
+  const mailCalendarPrevButton = document.getElementById("mail-calendar-prev");
+  const mailCalendarTodayButton = document.getElementById("mail-calendar-today");
+  const mailCalendarNextButton = document.getElementById("mail-calendar-next");
+  const mailCalendarMonthLabel = document.getElementById("mail-calendar-month-label");
+  const mailCalendarStatus = document.getElementById("mail-calendar-status");
+  const mailCalendarModeMonthButton = document.getElementById("mail-calendar-mode-month");
+  const mailCalendarModeWeekButton = document.getElementById("mail-calendar-mode-week");
+  const mailCalendarModeWorkweekButton = document.getElementById("mail-calendar-mode-workweek");
+  const mailCalendarGrid = document.getElementById("mail-calendar-grid");
+  const mailCalendarAgenda = document.getElementById("mail-calendar-agenda");
+  const mailCalendarDraftSubject = document.getElementById("mail-calendar-draft-subject");
+  const mailCalendarDraftDate = document.getElementById("mail-calendar-draft-date");
+  const mailCalendarDraftStart = document.getElementById("mail-calendar-draft-start");
+  const mailCalendarDraftEnd = document.getElementById("mail-calendar-draft-end");
+  const mailCalendarDraftLocation = document.getElementById("mail-calendar-draft-location");
+  const mailCalendarDraftCopyButton = document.getElementById("mail-calendar-draft-copy");
+  const mailCalendarDraftIcsButton = document.getElementById("mail-calendar-draft-ics");
+  const mailCalendarDraftClearButton = document.getElementById("mail-calendar-draft-clear");
   const mailComposeTitle = document.getElementById("mail-compose-title");
   const mailInboxStatus = document.getElementById("mail-inbox-status");
   const mailFolderList = document.getElementById("mail-folder-list");
@@ -105,10 +135,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const sharepointSitePath = "/sites/Faelles";
   const sharepointLibraryName = "Delte dokumenter";
   const powerAutomateFlowUrl = "REPLACE_WITH_POWER_AUTOMATE_HTTP_TRIGGER_URL";
-  const graphScopes = ["User.Read", "Sites.Read.All", "Files.Read.All", "Mail.Send", "Mail.Read"];
+  const portalLoginScopes = ["User.Read"];
+  const mailGraphScopes = ["User.Read", "Mail.Send", "Mail.Read"];
+  const calendarReadScopes = ["User.Read", "Calendars.ReadBasic"];
+  const sharepointReadScopes = ["User.Read", "Sites.Read.All", "Files.Read.All"];
   const mailReadWriteScopes = ["User.Read", "Mail.ReadWrite"];
   const graphWriteScopes = ["User.Read", "Sites.ReadWrite.All", "Files.ReadWrite.All"];
   const teamsReadScopes = ["User.Read", "Team.ReadBasic.All", "Channel.ReadBasic.All"];
+  const casesAutoRefreshMs = 2 * 60 * 1000;
   let sharepointSiteId = null;
   let sharepointDriveId = null;
   let sharepointDriveName = sharepointLibraryName;
@@ -118,6 +152,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let joinedTeams = [];
   let selectedTeamId = "";
   let selectedTeamName = "";
+  let tickets = [];
+  let caseViewFilter = "open";
+  let selectedTicketId = "";
+  let casesAutoRefreshHandle = null;
   let inboxMessages = [];
   let mailboxFolders = [];
   let selectedMailFolderId = "__all__";
@@ -125,6 +163,19 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedInboxMessageId = "";
   let focusReadPaneAfterLoad = false;
   let markMessageAsReadAfterLoadId = "";
+  let calendarVisibleMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let calendarSelectedDate = new Date();
+  let calendarViewMode = "month";
+  let calendarEvents = [];
+  let calendarLoading = false;
+  let calendarDraggedEventId = "";
+  let calendarDraft = {
+    subject: "",
+    date: new Date(),
+    start: "09:00",
+    end: "10:00",
+    location: "",
+  };
 
   const hiddenMailFolderNames = new Set([
     "alle mails",
@@ -314,6 +365,12 @@ document.addEventListener("DOMContentLoaded", () => {
       teamsView.classList.add("is-hidden");
     }
 
+    if (casesView) {
+      casesView.classList.add("is-hidden");
+    }
+
+    stopCasesAutoRefresh();
+
     if (wordView) {
       wordView.classList.add("is-hidden");
     }
@@ -339,6 +396,35 @@ document.addEventListener("DOMContentLoaded", () => {
     if (teamsStatus) {
       teamsStatus.textContent = message;
     }
+  }
+
+  function setCasesStatus(message) {
+    if (casesStatus) {
+      casesStatus.textContent = message;
+    }
+  }
+
+  function getCasesAutoRefreshLabel() {
+    return `Automatisk opdatering hvert ${Math.round(casesAutoRefreshMs / 60000)}. minut.`;
+  }
+
+  function stopCasesAutoRefresh() {
+    if (casesAutoRefreshHandle) {
+      window.clearInterval(casesAutoRefreshHandle);
+      casesAutoRefreshHandle = null;
+    }
+  }
+
+  function startCasesAutoRefresh() {
+    stopCasesAutoRefresh();
+    casesAutoRefreshHandle = window.setInterval(async () => {
+      if (!casesView || casesView.classList.contains("is-hidden")) {
+        stopCasesAutoRefresh();
+        return;
+      }
+
+      await loadCases({ silent: true });
+    }, casesAutoRefreshMs);
   }
 
   function clearTeamsLists() {
@@ -448,6 +534,542 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function getTicketId(ticket) {
+    return ticket?.TicketId || ticket?.ticketId || "SAG-?";
+  }
+
+  function getTicketSubject(ticket) {
+    return ticket?.Subject || ticket?.subject || "(intet emne)";
+  }
+
+  function getTicketEntries(ticket) {
+    if (Array.isArray(ticket?.Entries)) {
+      return ticket.Entries;
+    }
+
+    if (Array.isArray(ticket?.entries)) {
+      return ticket.entries;
+    }
+
+    return [];
+  }
+
+  function getTicketStatusLabel(ticket) {
+    return ticket?.Status === 1 || ticket?.status === 1 ? "Lukket" : "Åben";
+  }
+
+  function isTicketClosed(ticket) {
+    return getTicketStatusLabel(ticket) === "Lukket";
+  }
+
+  function getTicketAssignee(ticket) {
+    return {
+      id: String(ticket?.AssignedToId || ticket?.assignedToId || ticket?.AssignedTo?.id || ticket?.assignedTo?.id || "").trim(),
+      name: String(ticket?.AssignedToName || ticket?.assignedToName || ticket?.AssignedTo?.name || ticket?.assignedTo?.name || "").trim(),
+      email: String(ticket?.AssignedToEmail || ticket?.assignedToEmail || ticket?.AssignedTo?.email || ticket?.assignedTo?.email || "").trim(),
+      assignedAt: ticket?.AssignedAt || ticket?.assignedAt || ticket?.AssignedTo?.assignedAt || ticket?.assignedTo?.assignedAt || null,
+    };
+  }
+
+  function normalizeUserEmail(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function getCaseFilterLabel(filter) {
+    if (filter === "closed") {
+      return "Alle lukkede sager";
+    }
+
+    if (filter === "all") {
+      return "Alle sager";
+    }
+
+    return "Alle åbne sager";
+  }
+
+  function getFilteredTickets(items) {
+    if (caseViewFilter === "closed") {
+      return items.filter((ticket) => isTicketClosed(ticket));
+    }
+
+    if (caseViewFilter === "all") {
+      return items;
+    }
+
+    return items.filter((ticket) => !isTicketClosed(ticket));
+  }
+
+  function updateCaseFilterButtons() {
+    const mapping = [
+      { button: casesFilterOpenButton, filter: "open" },
+      { button: casesFilterClosedButton, filter: "closed" },
+      { button: casesFilterAllButton, filter: "all" },
+    ];
+
+    mapping.forEach(({ button, filter }) => {
+      if (!button) {
+        return;
+      }
+
+      const isActive = caseViewFilter === filter;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+
+    if (casesListTitle) {
+      casesListTitle.textContent = getCaseFilterLabel(caseViewFilter);
+    }
+  }
+
+  function setCaseViewFilter(nextFilter) {
+    const allowedFilters = new Set(["open", "closed", "all"]);
+    if (!allowedFilters.has(nextFilter)) {
+      return;
+    }
+
+    caseViewFilter = nextFilter;
+    updateCaseFilterButtons();
+    const filteredTickets = getFilteredTickets(tickets);
+    if (!filteredTickets.some((ticket) => getTicketId(ticket) === selectedTicketId)) {
+      selectedTicketId = getTicketId(filteredTickets[0]);
+    }
+    renderCasesList(filteredTickets);
+    const currentEmail = getCurrentUserEmailForUi();
+    if (filteredTickets.length === 0) {
+      setCasesStatus(currentEmail
+        ? `Ingen sager fundet for ${currentEmail} i visningen "${getCaseFilterLabel(caseViewFilter)}". ${getCasesAutoRefreshLabel()}`
+        : `Ingen sager fundet for den aktuelle bruger. ${getCasesAutoRefreshLabel()}`);
+      return;
+    }
+
+    setCasesStatus(`Viser ${filteredTickets.length} sager i visningen "${getCaseFilterLabel(caseViewFilter)}". ${getCasesAutoRefreshLabel()}`);
+  }
+
+  function getCurrentUserIdentity() {
+    const serverName = String(serverAuthenticatedUser?.name || "").trim();
+    const serverEmail = String(serverAuthenticatedUser?.email || "").trim();
+    if (serverEmail) {
+      return {
+        id: String(serverAuthenticatedUser?.id || "").trim(),
+        name: serverName || serverEmail,
+        email: serverEmail,
+      };
+    }
+
+    const account = getActiveOrFirstAccount();
+    const claims = account?.idTokenClaims || {};
+    const claimEmailCandidates = [
+      claims.preferred_username,
+      claims.upn,
+      Array.isArray(claims.emails) ? claims.emails[0] : claims.emails,
+      account?.username,
+    ];
+    const email = String(claimEmailCandidates.find((value) => String(value || "").trim()) || "").trim();
+
+    return {
+      id: String(claims.oid || claims.objectId || "").trim(),
+      name: String(account?.name || claims.name || email || "").trim(),
+      email,
+    };
+  }
+
+  async function runCaseAction(ticketId, message, action) {
+    const response = await fetch(`/api/tickets/${action}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getLocalIdentityHeaders(),
+      },
+      body: JSON.stringify({ ticketId, message }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `Kunne ikke ${action === "reply" ? "sende svar" : "lukke sag"}.`);
+    }
+
+    return payload;
+  }
+
+  async function assignTicketToCurrentUser(ticketId) {
+    const response = await fetch("/api/tickets/assign-self", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getLocalIdentityHeaders(),
+      },
+      body: JSON.stringify({ ticketId }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "Kunne ikke tildele sag.");
+    }
+
+    return payload;
+  }
+
+  function renderCaseDetail(ticket) {
+    if (!casesDetail) {
+      return;
+    }
+
+    casesDetail.textContent = "";
+
+    if (ticket) {
+      casesDetail.setAttribute("aria-busy", "true");
+    }
+
+    if (!ticket) {
+      const heading = document.createElement("h3");
+      heading.textContent = "Vælg en sag";
+      const info = document.createElement("p");
+      info.textContent = "Vælg en sag i listen for at se historikken.";
+      casesDetail.appendChild(heading);
+      casesDetail.appendChild(info);
+      casesDetail.removeAttribute("aria-busy");
+      return;
+    }
+
+    const header = document.createElement("div");
+    header.className = "case-detail-header";
+
+    const heading = document.createElement("h3");
+    heading.textContent = `${getTicketId(ticket)} - ${getTicketSubject(ticket)}`;
+
+    const meta = document.createElement("p");
+    meta.className = "case-detail-meta";
+    const senderName = ticket?.SenderName || ticket?.senderName || "Ukendt";
+    const senderAddress = ticket?.SenderAddress || ticket?.senderAddress || "ukendt";
+    const assignee = getTicketAssignee(ticket);
+    const assigneeLabel = assignee.email
+      ? `Tildelt: ${assignee.name || assignee.email} <${assignee.email}>`
+      : "Tildelt: Ingen";
+    meta.textContent = `${getTicketStatusLabel(ticket)} | ${senderName} <${senderAddress}> | ${assigneeLabel} | Oprettet ${formatDate(ticket?.CreatedAt || ticket?.createdAt)}`;
+
+    header.appendChild(heading);
+    header.appendChild(meta);
+
+    const entries = document.createElement("ol");
+    entries.className = "case-entry-list";
+
+    const actions = document.createElement("section");
+    actions.className = "case-actions";
+    actions.setAttribute("aria-label", "Handlinger for sag");
+
+    const actionHeading = document.createElement("h4");
+    actionHeading.textContent = "Svar eller luk sag";
+
+    const actionHelp = document.createElement("p");
+    actionHelp.className = "case-detail-meta";
+    actionHelp.textContent = "Skriv dit svar eller afslutningsbesked her. Svaret bliver sendt til brugeren og gemt i sagen.";
+
+    const actionLabel = document.createElement("label");
+    const actionInputId = `case-message-${getTicketId(ticket)}`;
+    actionLabel.className = "visually-hidden";
+    actionLabel.setAttribute("for", actionInputId);
+    actionLabel.textContent = `Besked til ${getTicketId(ticket)}`;
+
+    const actionInput = document.createElement("textarea");
+    actionInput.id = actionInputId;
+    actionInput.className = "case-action-input";
+    const canReply = hasPortalPermission("portal.cases.reply");
+    const canClose = hasPortalPermission("portal.cases.close");
+    const isClosed = getTicketStatusLabel(ticket) === "Lukket";
+    actionInput.placeholder = getTicketStatusLabel(ticket) === "Lukket"
+      ? "Sagen er lukket."
+      : "Skriv dit svar eller din afslutningsbesked her";
+    actionInput.disabled = isClosed || (!canReply && !canClose);
+
+    const actionStatus = document.createElement("p");
+    actionStatus.className = "cases-status";
+    actionStatus.setAttribute("role", "status");
+    actionStatus.setAttribute("aria-live", "polite");
+    actionStatus.textContent = isClosed
+      ? "Sagen er allerede lukket."
+      : (!canReply && !canClose)
+        ? "Du har ikke adgang til at svare på eller lukke denne sag."
+        : "Klar til at sende svar eller lukke sagen.";
+
+    const actionButtons = document.createElement("div");
+    actionButtons.className = "portal-form-actions";
+
+    const assignButton = document.createElement("button");
+    assignButton.type = "button";
+    assignButton.className = "secondary-button";
+    assignButton.textContent = "Sæt mig på sagen";
+
+    const replyButton = document.createElement("button");
+    replyButton.type = "button";
+    replyButton.className = "primary-button";
+    replyButton.textContent = "Send svar";
+    replyButton.disabled = isClosed || !canReply;
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "secondary-button";
+    closeButton.textContent = "Luk sag";
+    closeButton.disabled = isClosed || !canClose;
+
+    if (!canReply) {
+      replyButton.title = "Din rolle har ikke adgang til at svare på sager.";
+      replyButton.setAttribute("aria-disabled", "true");
+    }
+
+    if (!canClose) {
+      closeButton.title = "Din rolle har ikke adgang til at lukke sager.";
+      closeButton.setAttribute("aria-disabled", "true");
+    }
+
+    const currentUser = getCurrentUserIdentity();
+    const canAssign = hasPortalPermission("portal.cases.assign") || hasPortalPermission("*");
+    const isAssignedToCurrentUser = assignee.email && normalizeUserEmail(assignee.email) === normalizeUserEmail(currentUser.email);
+    assignButton.disabled = !canAssign || !currentUser.email || isAssignedToCurrentUser;
+
+    if (!canAssign) {
+      assignButton.title = "Din rolle har ikke adgang til at tildele sager.";
+      assignButton.setAttribute("aria-disabled", "true");
+    } else if (!currentUser.email) {
+      assignButton.title = "Kunne ikke bestemme din brugeridentitet.";
+      assignButton.setAttribute("aria-disabled", "true");
+    } else if (isAssignedToCurrentUser) {
+      assignButton.title = "Sagen er allerede tildelt dig.";
+      assignButton.setAttribute("aria-disabled", "true");
+    }
+
+    const setBusyState = (isBusy) => {
+      assignButton.disabled = isBusy || !canAssign || !currentUser.email || isAssignedToCurrentUser;
+      replyButton.disabled = isBusy || isClosed || !canReply;
+      closeButton.disabled = isBusy || isClosed || !canClose;
+      actionInput.disabled = isBusy || isClosed || (!canReply && !canClose);
+    };
+
+    assignButton.addEventListener("click", async () => {
+      actionStatus.textContent = "Tildeler sag...";
+      setBusyState(true);
+
+      try {
+        const result = await assignTicketToCurrentUser(getTicketId(ticket));
+        actionStatus.textContent = result?.warning
+          ? `Sagen er tildelt dig. Advarsel: ${result.warning}`
+          : "Sagen er tildelt dig. Brugeren er informeret.";
+        await loadCases();
+      } catch (error) {
+        actionStatus.textContent = error?.message || "Kunne ikke tildele sag.";
+      } finally {
+        setBusyState(false);
+      }
+    });
+
+    replyButton.addEventListener("click", async () => {
+      const messageText = String(actionInput.value || "").trim();
+      if (!messageText) {
+        actionStatus.textContent = "Skriv en besked før du sender svar.";
+        actionInput.focus();
+        return;
+      }
+
+      actionStatus.textContent = "Sender svar...";
+      setBusyState(true);
+
+      try {
+        await runCaseAction(getTicketId(ticket), messageText, "reply");
+        actionInput.value = "";
+        actionStatus.textContent = "Svar er sendt.";
+        await loadCases();
+      } catch (error) {
+        actionStatus.textContent = error?.message || "Kunne ikke sende svar.";
+      } finally {
+        setBusyState(false);
+      }
+    });
+
+    closeButton.addEventListener("click", async () => {
+      const messageText = String(actionInput.value || "").trim();
+      if (!messageText) {
+        actionStatus.textContent = "Skriv en afslutningsbesked før du lukker sagen.";
+        actionInput.focus();
+        return;
+      }
+
+      actionStatus.textContent = "Lukker sagen...";
+      setBusyState(true);
+
+      try {
+        await runCaseAction(getTicketId(ticket), messageText, "close");
+        actionInput.value = "";
+        actionStatus.textContent = "Sagen er lukket.";
+        await loadCases();
+      } catch (error) {
+        actionStatus.textContent = error?.message || "Kunne ikke lukke sagen.";
+      } finally {
+        setBusyState(false);
+      }
+    });
+
+    actionButtons.appendChild(assignButton);
+    actionButtons.appendChild(replyButton);
+    actionButtons.appendChild(closeButton);
+    actions.appendChild(actionHeading);
+    actions.appendChild(actionHelp);
+    actions.appendChild(actionLabel);
+    actions.appendChild(actionInput);
+    actions.appendChild(actionButtons);
+    actions.appendChild(actionStatus);
+
+    const ticketEntries = getTicketEntries(ticket);
+    if (ticketEntries.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "case-entry";
+      empty.textContent = "Ingen historik i denne sag endnu.";
+      entries.appendChild(empty);
+    } else {
+      ticketEntries.forEach((entry) => {
+        const item = document.createElement("li");
+        item.className = `case-entry ${String(entry?.Direction || entry?.direction || "").toLowerCase()}`;
+
+        const entryMeta = document.createElement("p");
+        entryMeta.className = "case-entry-meta";
+        entryMeta.textContent = `${entry?.Direction || entry?.direction || "Ukendt"} | ${formatDate(entry?.Timestamp || entry?.timestamp)}`;
+
+        const message = document.createElement("p");
+        message.className = "case-entry-message";
+        message.textContent = entry?.Message || entry?.message || "(tom besked)";
+
+        item.appendChild(entryMeta);
+        item.appendChild(message);
+        entries.appendChild(item);
+      });
+    }
+
+    casesDetail.appendChild(header);
+    casesDetail.appendChild(actions);
+    casesDetail.appendChild(entries);
+    casesDetail.removeAttribute("aria-busy");
+  }
+
+  function renderCasesList(items) {
+    if (!casesList) {
+      return;
+    }
+
+    casesList.textContent = "";
+
+    if (casesCount) {
+      if (tickets.length !== items.length) {
+        casesCount.textContent = `${items.length} af ${tickets.length} sager`;
+      } else {
+        casesCount.textContent = `${items.length} sager`;
+      }
+    }
+
+    if (!items || items.length === 0) {
+      const emptyItem = document.createElement("li");
+      emptyItem.className = "case-item";
+      emptyItem.textContent = "Ingen sager fundet.";
+      casesList.appendChild(emptyItem);
+      renderCaseDetail(null);
+      return;
+    }
+
+    items.forEach((ticket) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "case-item-button";
+      const ticketId = getTicketId(ticket);
+      if (ticketId === selectedTicketId) {
+        button.classList.add("is-active");
+        button.setAttribute("aria-current", "true");
+      } else {
+        button.removeAttribute("aria-current");
+      }
+      button.setAttribute("aria-controls", "cases-detail");
+
+      const title = document.createElement("p");
+      title.className = "case-item-title";
+      title.textContent = `${ticketId} - ${getTicketSubject(ticket)}`;
+
+      const meta = document.createElement("p");
+      meta.className = "case-item-meta";
+      const assignee = getTicketAssignee(ticket);
+      const assigneeLabel = assignee.email
+        ? `Tildelt: ${assignee.name || assignee.email}`
+        : "Tildelt: Ingen";
+      meta.textContent = `${getTicketStatusLabel(ticket)} | ${assigneeLabel} | ${formatDate(ticket?.UpdatedAt || ticket?.updatedAt)}`;
+
+      button.appendChild(title);
+      button.appendChild(meta);
+      button.addEventListener("click", () => {
+        selectedTicketId = ticketId;
+        renderCasesList(getFilteredTickets(tickets));
+        if (casesDetail) {
+          casesDetail.focus();
+        }
+      });
+
+      item.appendChild(button);
+      casesList.appendChild(item);
+    });
+
+    const activeTicket = items.find((ticket) => getTicketId(ticket) === selectedTicketId) || items[0];
+    selectedTicketId = getTicketId(activeTicket);
+    renderCaseDetail(activeTicket);
+  }
+
+  async function loadCases(options = {}) {
+    if (!casesView) {
+      return;
+    }
+
+    const silent = options?.silent === true;
+
+    if (!silent) {
+      setCasesStatus("Henter sager...");
+    }
+
+    try {
+      const response = await fetch("/api/tickets", {
+        cache: "no-store",
+        headers: {
+          ...getLocalIdentityHeaders(),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Kunne ikke hente sager (${response.status})`);
+      }
+
+      const payload = await response.json();
+      tickets = Array.isArray(payload?.Tickets) ? payload.Tickets : [];
+      tickets.sort((a, b) => new Date(b.UpdatedAt || b.updatedAt || 0) - new Date(a.UpdatedAt || a.updatedAt || 0));
+      const filteredTickets = getFilteredTickets(tickets);
+      if (!selectedTicketId || !filteredTickets.some((ticket) => getTicketId(ticket) === selectedTicketId)) {
+        selectedTicketId = getTicketId(filteredTickets[0]);
+      }
+
+      renderCasesList(filteredTickets);
+      if (filteredTickets.length === 0) {
+        const currentEmail = getCurrentUserEmailForUi();
+        setCasesStatus(currentEmail
+          ? `Ingen sager fundet for ${currentEmail} i visningen "${getCaseFilterLabel(caseViewFilter)}". ${getCasesAutoRefreshLabel()}`
+          : `Ingen sager fundet for den aktuelle bruger. ${getCasesAutoRefreshLabel()}`);
+      } else {
+        const nowLabel = new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+        setCasesStatus(
+          silent
+            ? `Sager opdateret automatisk kl. ${nowLabel}. ${getCasesAutoRefreshLabel()}`
+            : `Viser ${filteredTickets.length} sager i visningen "${getCaseFilterLabel(caseViewFilter)}". ${getCasesAutoRefreshLabel()}`,
+        );
+      }
+      setResourceStatus("Sagsvisning er åbnet i portalen.");
+    } catch (error) {
+      tickets = [];
+      renderCasesList(tickets);
+      const message = error?.message || "Ukendt fejl";
+      setCasesStatus(`Kunne ikke hente sager: ${message}`);
+    }
+  }
+
   async function loadTeamsList(interactiveAllowed) {
     if (!teamsView) {
       return;
@@ -459,7 +1081,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      let accessToken = await acquireGraphToken(interactiveAllowed, false, teamsReadScopes);
+      let accessToken = await acquireGraphToken(interactiveAllowed, false, teamsReadScopes, {
+        allowRedirect: !isLoopback,
+        pendingAction: {
+          action: "teams",
+          payload: {},
+        },
+      });
       let response;
 
       try {
@@ -488,6 +1116,11 @@ document.addEventListener("DOMContentLoaded", () => {
       renderTeamsList(joinedTeams);
       setTeamsStatus(`Viser ${joinedTeams.length} Teams.`);
     } catch (error) {
+      if (isGraphRedirectStartedError(error)) {
+        setTeamsStatus("Fortsætter login i samme fane. Du sendes tilbage til Teams automatisk.");
+        return;
+      }
+
       const message = error?.message || "Ukendt fejl";
       setTeamsStatus(`Kunne ikke hente Teams: ${message}`);
       clearTeamsLists();
@@ -546,6 +1179,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (!hasPortalPermission("portal.teams")) {
+      setResourceStatus("Du har ikke adgang til Teams i portalen.");
+      return;
+    }
+
     hidePortalViews();
     teamsView.classList.remove("is-hidden");
     setResourceStatus("Teams mirror er åbnet i portalen.");
@@ -599,7 +1237,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    let accessToken = await acquireGraphToken(interactiveAllowed);
+    let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
     const detailUrl = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(message.id)}?$select=id,subject,from,receivedDateTime,body,bodyPreview`;
 
     let detail;
@@ -612,7 +1250,7 @@ document.addEventListener("DOMContentLoaded", () => {
         throw error;
       }
 
-      accessToken = await acquireGraphToken(true, true);
+      accessToken = await acquireGraphToken(true, true, mailGraphScopes);
       detail = await fetchGraph(detailUrl, accessToken, {
         Prefer: 'outlook.body-content-type="text"',
       });
@@ -712,6 +1350,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function openWordPortal() {
     if (!wordView) {
+      return;
+    }
+
+    if (!hasPortalPermission("portal.word")) {
+      setResourceStatus("Du har ikke adgang til Word i portalen.");
       return;
     }
 
@@ -1272,6 +1915,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (!hasPortalPermission("portal.excel")) {
+      setResourceStatus("Du har ikke adgang til Excel i portalen.");
+      return;
+    }
+
     hidePortalViews();
     excelView.classList.remove("is-hidden");
     setResourceStatus("Excel er åbnet i portalen.");
@@ -1290,18 +1938,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const col = Number.parseInt(inputElement.getAttribute("data-col") || "0", 10);
     excelData[row][col] = inputElement.value;
     setExcelActiveCell(row, col);
-  }
-
-  function exportExcelCsv() {
-    ensureExcelDataShape();
-    const csv = excelData
-      .map((row) => row.map((value) => {
-        const text = String(value ?? "");
-        const escaped = text.replace(/"/g, '""');
-        return `"${escaped}"`;
-      }).join(","))
-      .join("\n");
-    return csv;
   }
 
   function detectDelimitedTextDelimiter(text) {
@@ -1635,7 +2271,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function isAccessDeniedMessage(message) {
     const text = String(message || "").toLowerCase();
-    return text.includes("403") || text.includes("access denied") || text.includes("erroraccessdenied");
+    return text.includes("403")
+      || text.includes("access denied")
+      || text.includes("erroraccessdenied")
+      || text.includes("invalid_grant")
+      || text.includes("aadsts65001")
+      || text.includes("consent");
+  }
+
+  function isConsentRequiredMessage(message) {
+    const text = String(message || "").toLowerCase();
+    return text.includes("invalid_grant")
+      || text.includes("aadsts65001")
+      || text.includes("consent");
   }
 
   function updateMailPreviewVisibility() {
@@ -1752,7 +2400,13 @@ document.addEventListener("DOMContentLoaded", () => {
     setMailInboxStatus("Henter mailmapper...");
 
     try {
-      let accessToken = await acquireGraphToken(interactiveAllowed);
+      let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes, {
+        allowRedirect: !isLoopback,
+        pendingAction: {
+          action: "mail",
+          payload: {},
+        },
+      });
       const allFolders = [];
       let nextUrl = "https://graph.microsoft.com/v1.0/me/mailFolders?$top=200&$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount";
 
@@ -1791,6 +2445,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       renderMailFolders(mailboxFolders);
     } catch (error) {
+      if (isGraphRedirectStartedError(error)) {
+        setMailInboxStatus("Fortsætter login i samme fane. Du sendes tilbage til Mail automatisk.");
+        return;
+      }
+
       const message = error?.message || "Ukendt fejl";
       setMailInboxStatus(`Kunne ikke hente mapper: ${message}`);
       clearMailFolderList();
@@ -1823,7 +2482,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const loadedMessages = [];
 
     try {
-      let accessToken = await acquireGraphToken(interactiveAllowed);
+      let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
 
       while (nextUrl) {
         let messagesResponse;
@@ -1835,7 +2494,7 @@ document.addEventListener("DOMContentLoaded", () => {
             throw error;
           }
 
-          accessToken = await acquireGraphToken(true, true);
+          accessToken = await acquireGraphToken(true, true, mailGraphScopes);
           messagesResponse = await fetchGraph(nextUrl, accessToken);
         }
 
@@ -1940,6 +2599,580 @@ document.addEventListener("DOMContentLoaded", () => {
       `Indhold: ${message.bodyPreview || "Ingen forhåndsvisning."}`,
     ].join(" ");
     announceMailForScreenReader(summaryForReader);
+  }
+
+
+  function setCalendarStatus(message) {
+    if (mailCalendarStatus) {
+      mailCalendarStatus.textContent = message;
+    }
+  }
+
+  function getCalendarStartOfMonth(date) {
+    const source = date instanceof Date ? date : new Date(date || Date.now());
+    return new Date(source.getFullYear(), source.getMonth(), 1);
+  }
+
+  function getCalendarStartOfWeek(date) {
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayIndex = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - dayIndex);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  function getCalendarEndOfWeek(date) {
+    const end = getCalendarStartOfWeek(date);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return end;
+  }
+
+  function getCalendarDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function getCalendarDayLabel(date) {
+    return date.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  }
+
+  function getCalendarMonthLabel(date) {
+    return date.toLocaleDateString("da-DK", { month: "long", year: "numeric" });
+  }
+
+  function getCalendarTimeLabel(date) {
+    return date.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function getCalendarRangeDates(anchorDate, includeWeekends = true) {
+    const start = getCalendarStartOfWeek(anchorDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + (includeWeekends ? 6 : 4));
+
+    const dates = [];
+    for (let current = new Date(start); current <= end; current.setDate(current.getDate() + 1)) {
+      dates.push(new Date(current));
+    }
+
+    return dates;
+  }
+
+  function getCalendarEventsInRange(startDate, endDate) {
+    return calendarEvents
+      .filter((event) => event.start < endDate && event.end > startDate)
+      .sort((left, right) => left.start - right.start);
+  }
+
+  function setCalendarDraftFromDate(date, sourceEvent = null) {
+    const resolvedDate = date instanceof Date ? new Date(date) : new Date(date || Date.now());
+    calendarDraft.date = resolvedDate;
+    calendarDraft.subject = String(sourceEvent?.subject || calendarDraft.subject || "").trim();
+    calendarDraft.location = String(sourceEvent?.location || calendarDraft.location || "").trim();
+
+    if (!mailCalendarDraftStart?.value || mailCalendarDraftStart.value === "09:00") {
+      calendarDraft.start = sourceEvent?.start ? getCalendarTimeLabel(sourceEvent.start) : "09:00";
+    }
+
+    if (!mailCalendarDraftEnd?.value || mailCalendarDraftEnd.value === "10:00") {
+      calendarDraft.end = sourceEvent?.end ? getCalendarTimeLabel(sourceEvent.end) : "10:00";
+    }
+
+    if (mailCalendarDraftDate) {
+      mailCalendarDraftDate.value = getCalendarDateKey(resolvedDate);
+    }
+    if (mailCalendarDraftSubject) {
+      mailCalendarDraftSubject.value = calendarDraft.subject;
+    }
+    if (mailCalendarDraftStart) {
+      mailCalendarDraftStart.value = sourceEvent?.start ? sourceEvent.start.toTimeString().slice(0, 5) : calendarDraft.start;
+    }
+    if (mailCalendarDraftEnd) {
+      mailCalendarDraftEnd.value = sourceEvent?.end ? sourceEvent.end.toTimeString().slice(0, 5) : calendarDraft.end;
+    }
+    if (mailCalendarDraftLocation) {
+      mailCalendarDraftLocation.value = calendarDraft.location;
+    }
+  }
+
+  function readCalendarDraft() {
+    const dateValue = mailCalendarDraftDate?.value || getCalendarDateKey(calendarDraft.date);
+    const startValue = mailCalendarDraftStart?.value || calendarDraft.start || "09:00";
+    const endValue = mailCalendarDraftEnd?.value || calendarDraft.end || "10:00";
+    const subject = String(mailCalendarDraftSubject?.value || calendarDraft.subject || "").trim() || "Nyt møde";
+    const location = String(mailCalendarDraftLocation?.value || calendarDraft.location || "").trim();
+    const date = new Date(`${dateValue}T00:00:00`);
+
+    return {
+      subject,
+      location,
+      start: new Date(`${dateValue}T${startValue}:00`),
+      end: new Date(`${dateValue}T${endValue}:00`),
+      date,
+    };
+  }
+
+  function formatCalendarIcsDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}${month}${day}T${hours}${minutes}${seconds}`;
+  }
+
+  function buildCalendarIcsContent(draft) {
+    const uid = `dbs-portal-${Date.now()}@blind.dk`;
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//DBS Portal//Kalenderkladde//DA",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${formatCalendarIcsDate(new Date())}`,
+      `DTSTART:${formatCalendarIcsDate(draft.start)}`,
+      `DTEND:${formatCalendarIcsDate(draft.end)}`,
+      `SUMMARY:${String(draft.subject || "Nyt møde").replace(/\n/g, " ")}`,
+    ];
+
+    if (draft.location) {
+      lines.push(`LOCATION:${String(draft.location).replace(/\n/g, " ")}`);
+    }
+
+    lines.push(
+      "DESCRIPTION:Oprettet i DBS Portal",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    );
+
+    return lines.join("\r\n");
+  }
+
+  function downloadCalendarDraftIcs() {
+    const draft = readCalendarDraft();
+    const icsContent = buildCalendarIcsContent(draft);
+    const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `dbs-mode-${getCalendarDateKey(draft.date)}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function copyCalendarDraftText() {
+    const draft = readCalendarDraft();
+    const text = [
+      `Emne: ${draft.subject}`,
+      `Dato: ${getCalendarDayLabel(draft.date)}`,
+      `Tid: ${draft.start.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })} - ${draft.end.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}`,
+      draft.location ? `Sted: ${draft.location}` : "",
+    ].filter(Boolean).join("\n");
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
+    return text;
+  }
+
+  function setCalendarViewMode(nextMode) {
+    const allowedModes = new Set(["month", "week", "workweek"]);
+    calendarViewMode = allowedModes.has(nextMode) ? nextMode : "month";
+
+    [
+      { button: mailCalendarModeMonthButton, mode: "month" },
+      { button: mailCalendarModeWeekButton, mode: "week" },
+      { button: mailCalendarModeWorkweekButton, mode: "workweek" },
+    ].forEach(({ button, mode }) => {
+      if (!button) {
+        return;
+      }
+
+      const isActive = calendarViewMode === mode;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+
+    renderCalendarGrid();
+    renderCalendarAgenda(calendarSelectedDate);
+  }
+
+  function openCalendarDraftForDate(date, sourceEvent = null) {
+    calendarSelectedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    setCalendarDraftFromDate(calendarSelectedDate, sourceEvent);
+    renderCalendarGrid();
+    renderCalendarAgenda(calendarSelectedDate);
+    mailCalendarDraftSubject?.focus();
+  }
+
+  function parseCalendarDateTime(rawValue) {
+    const value = rawValue?.dateTime || rawValue || null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function normalizeCalendarEvent(rawEvent) {
+    const start = parseCalendarDateTime(rawEvent?.start);
+    const end = parseCalendarDateTime(rawEvent?.end);
+
+    if (!start || !end) {
+      return null;
+    }
+
+    return {
+      id: String(rawEvent?.id || "").trim(),
+      subject: String(rawEvent?.subject || "(intet emne)").trim(),
+      start,
+      end,
+      location: String(rawEvent?.location?.displayName || rawEvent?.location || "").trim(),
+      organizer: String(rawEvent?.organizer?.emailAddress?.name || rawEvent?.organizer?.emailAddress?.address || "").trim(),
+      isAllDay: Boolean(rawEvent?.isAllDay),
+      webLink: String(rawEvent?.webLink || "").trim(),
+    };
+  }
+
+  function getCalendarEventsForDate(date) {
+    const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    return calendarEvents
+      .filter((event) => event.start < endOfDay && event.end > startOfDay)
+      .sort((left, right) => left.start - right.start);
+  }
+
+  function clearCalendarPanel() {
+    if (mailCalendarGrid) {
+      mailCalendarGrid.textContent = "";
+    }
+
+    if (mailCalendarAgenda) {
+      mailCalendarAgenda.textContent = "";
+    }
+  }
+
+  function renderCalendarAgenda(date) {
+    if (!mailCalendarAgenda) {
+      return;
+    }
+
+    mailCalendarAgenda.textContent = "";
+    const heading = document.createElement("h4");
+    heading.textContent = calendarViewMode === "month"
+      ? `Agenda for ${getCalendarDayLabel(date)}`
+      : calendarViewMode === "workweek"
+        ? `Arbejdsuge for ${getCalendarDayLabel(getCalendarStartOfWeek(date))}`
+        : `Uge for ${getCalendarDayLabel(getCalendarStartOfWeek(date))}`;
+    mailCalendarAgenda.appendChild(heading);
+
+    const includeWeekends = calendarViewMode !== "workweek";
+    const rangeDates = getCalendarRangeDates(date, includeWeekends);
+    const rangeStart = rangeDates[0];
+    const rangeEnd = new Date(rangeDates[rangeDates.length - 1]);
+    rangeEnd.setHours(23, 59, 59, 999);
+    const events = calendarViewMode === "month"
+      ? getCalendarEventsForDate(date)
+      : getCalendarEventsInRange(rangeStart, rangeEnd);
+
+    if (calendarViewMode === "month") {
+      if (events.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "mail-calendar-empty";
+        empty.textContent = "Ingen møder eller aftaler på denne dag.";
+        mailCalendarAgenda.appendChild(empty);
+        return;
+      }
+
+      const list = document.createElement("ul");
+      list.className = "mail-calendar-agenda-list";
+
+      events.forEach((event) => {
+        const item = document.createElement("li");
+        item.className = "mail-calendar-agenda-item";
+        item.draggable = true;
+        item.addEventListener("dragstart", () => {
+          calendarDraggedEventId = event.id;
+        });
+
+        const topRow = document.createElement("div");
+        topRow.className = "mail-calendar-agenda-top";
+
+        const title = document.createElement("strong");
+        title.textContent = event.subject;
+
+        const time = document.createElement("span");
+        time.className = "mail-calendar-agenda-time";
+        time.textContent = event.isAllDay
+          ? "Hele dagen"
+          : `${getCalendarTimeLabel(event.start)} - ${getCalendarTimeLabel(event.end)}`;
+
+        topRow.appendChild(title);
+        topRow.appendChild(time);
+        item.appendChild(topRow);
+
+        const meta = document.createElement("p");
+        meta.className = "mail-calendar-agenda-meta";
+        meta.textContent = [event.location, event.organizer].filter(Boolean).join(" | ") || "Ingen yderligere detaljer.";
+        item.appendChild(meta);
+
+        const actionRow = document.createElement("div");
+        actionRow.className = "mail-calendar-agenda-actions";
+
+        if (event.webLink) {
+          const link = document.createElement("a");
+          link.href = event.webLink;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = "Åbn i Outlook";
+          link.className = "mail-calendar-link";
+          actionRow.appendChild(link);
+        }
+
+        const createButton = document.createElement("button");
+        createButton.type = "button";
+        createButton.className = "secondary-button mail-calendar-create-button";
+        createButton.textContent = "Opret møde ud fra dag";
+        createButton.addEventListener("click", () => openCalendarDraftForDate(date, event));
+        actionRow.appendChild(createButton);
+
+        item.appendChild(actionRow);
+        list.appendChild(item);
+      });
+
+      mailCalendarAgenda.appendChild(list);
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "mail-calendar-week-list";
+
+    rangeDates.forEach((day) => {
+      const dayEvents = getCalendarEventsForDate(day);
+      const section = document.createElement("section");
+      section.className = "mail-calendar-week-day";
+
+      const sectionHeader = document.createElement("button");
+      sectionHeader.type = "button";
+      sectionHeader.className = "mail-calendar-week-day-header";
+      sectionHeader.textContent = getCalendarDayLabel(day);
+      sectionHeader.addEventListener("click", () => openCalendarDraftForDate(day));
+
+      section.addEventListener("dragover", (event) => event.preventDefault());
+      section.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const draggedEvent = calendarEvents.find((entry) => entry.id === calendarDraggedEventId) || null;
+        openCalendarDraftForDate(day, draggedEvent);
+        calendarDraggedEventId = "";
+      });
+
+      const eventList = document.createElement("div");
+      eventList.className = "mail-calendar-week-events";
+
+      if (dayEvents.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "mail-calendar-empty";
+        empty.textContent = "Ingen aftaler.";
+        eventList.appendChild(empty);
+      } else {
+        dayEvents.forEach((event) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "mail-calendar-week-event";
+          item.draggable = true;
+          item.addEventListener("dragstart", () => {
+            calendarDraggedEventId = event.id;
+          });
+          item.addEventListener("click", () => openCalendarDraftForDate(day, event));
+
+          const time = document.createElement("span");
+          time.className = "mail-calendar-week-event-time";
+          time.textContent = event.isAllDay ? "Hele dagen" : `${getCalendarTimeLabel(event.start)} - ${getCalendarTimeLabel(event.end)}`;
+
+          const title = document.createElement("span");
+          title.className = "mail-calendar-week-event-title";
+          title.textContent = event.subject;
+
+          item.appendChild(time);
+          item.appendChild(title);
+          eventList.appendChild(item);
+        });
+      }
+
+      const createButton = document.createElement("button");
+      createButton.type = "button";
+      createButton.className = "secondary-button mail-calendar-create-button";
+      createButton.textContent = "Opret møde";
+      createButton.addEventListener("click", () => openCalendarDraftForDate(day));
+
+      section.appendChild(sectionHeader);
+      section.appendChild(eventList);
+      section.appendChild(createButton);
+      list.appendChild(section);
+    });
+
+    mailCalendarAgenda.appendChild(list);
+  }
+
+  function renderCalendarGrid() {
+    if (!mailCalendarGrid || !mailCalendarMonthLabel) {
+      return;
+    }
+
+    mailCalendarGrid.textContent = "";
+    mailCalendarMonthLabel.textContent = getCalendarMonthLabel(calendarVisibleMonth);
+
+    const rangeStart = getCalendarStartOfWeek(getCalendarStartOfMonth(calendarVisibleMonth));
+    const rangeEnd = getCalendarEndOfWeek(new Date(calendarVisibleMonth.getFullYear(), calendarVisibleMonth.getMonth() + 1, 0));
+    const todayKey = getCalendarDateKey(new Date());
+    const selectedKey = getCalendarDateKey(calendarSelectedDate);
+
+    for (let current = new Date(rangeStart); current <= rangeEnd; current.setDate(current.getDate() + 1)) {
+      const dayDate = new Date(current);
+      const dayEvents = getCalendarEventsForDate(dayDate);
+      const dayKey = getCalendarDateKey(dayDate);
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "mail-calendar-day";
+      cell.draggable = true;
+      if (dayDate.getMonth() !== calendarVisibleMonth.getMonth()) {
+        cell.classList.add("is-outside");
+      }
+      if (dayKey === todayKey) {
+        cell.classList.add("is-today");
+      }
+      if (dayKey === selectedKey) {
+        cell.classList.add("is-selected");
+      }
+
+      const dayNumber = document.createElement("span");
+      dayNumber.className = "mail-calendar-day-number";
+      dayNumber.textContent = String(dayDate.getDate());
+
+      const eventCount = document.createElement("span");
+      eventCount.className = "mail-calendar-day-count";
+      eventCount.textContent = dayEvents.length > 0 ? `${dayEvents.length} møde${dayEvents.length === 1 ? "" : "r"}` : "";
+
+      const chips = document.createElement("div");
+      chips.className = "mail-calendar-day-chips";
+      dayEvents.slice(0, 2).forEach((event) => {
+        const chip = document.createElement("span");
+        chip.className = "mail-calendar-chip";
+        chip.textContent = event.subject;
+        chips.appendChild(chip);
+      });
+
+      const createButton = document.createElement("button");
+      createButton.type = "button";
+      createButton.className = "mail-calendar-day-create";
+      createButton.textContent = "+ Møde";
+      createButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openCalendarDraftForDate(dayDate);
+      });
+
+      cell.appendChild(dayNumber);
+      cell.appendChild(eventCount);
+      cell.appendChild(chips);
+      cell.appendChild(createButton);
+      cell.addEventListener("click", () => {
+        calendarSelectedDate = dayDate;
+        setCalendarDraftFromDate(dayDate);
+        renderCalendarGrid();
+        renderCalendarAgenda(calendarSelectedDate);
+      });
+      cell.addEventListener("dragover", (event) => event.preventDefault());
+      cell.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const draggedEvent = calendarEvents.find((entry) => entry.id === calendarDraggedEventId) || null;
+        openCalendarDraftForDate(dayDate, draggedEvent);
+        calendarDraggedEventId = "";
+      });
+
+      mailCalendarGrid.appendChild(cell);
+    }
+
+    if (mailCalendarStatus && !calendarLoading) {
+      const modeLabel = calendarViewMode === "month" ? "måned" : calendarViewMode === "week" ? "uge" : "arbejdsuge";
+      mailCalendarStatus.textContent = `Viser ${calendarEvents.length} kalenderaftaler i ${getCalendarMonthLabel(calendarVisibleMonth)} (${modeLabel}).`;
+    }
+  }
+
+  async function loadCalendarEvents(interactiveAllowed) {
+    if (!mailCalendarGrid || !mailCalendarAgenda) {
+      return;
+    }
+
+    if (calendarLoading) {
+      return;
+    }
+
+    calendarLoading = true;
+    setCalendarStatus("Henter kalender...");
+    clearCalendarPanel();
+    renderCalendarGrid();
+
+    const rangeStart = getCalendarStartOfWeek(getCalendarStartOfMonth(calendarVisibleMonth));
+    const rangeEnd = getCalendarEndOfWeek(new Date(calendarVisibleMonth.getFullYear(), calendarVisibleMonth.getMonth() + 1, 0));
+    const startDateTime = rangeStart.toISOString();
+    const endDateTime = rangeEnd.toISOString();
+    const queryUrl = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(startDateTime)}&endDateTime=${encodeURIComponent(endDateTime)}&$orderby=start/dateTime&$select=id,subject,start,end,organizer,location,isAllDay,webLink`;
+
+    try {
+      let accessToken = await acquireGraphToken(interactiveAllowed, false, calendarReadScopes);
+      let nextUrl = queryUrl;
+      const loadedEvents = [];
+
+      while (nextUrl) {
+        let response;
+        try {
+          response = await fetchGraph(nextUrl, accessToken);
+        } catch (error) {
+          if (!interactiveAllowed || isConsentRequiredMessage(error?.message) || !isAccessDeniedMessage(error?.message)) {
+            throw error;
+          }
+
+          accessToken = await acquireGraphToken(true, false, calendarReadScopes);
+          response = await fetchGraph(nextUrl, accessToken);
+        }
+
+        loadedEvents.push(...(response.value || []));
+        nextUrl = response["@odata.nextLink"] || "";
+      }
+
+      calendarEvents = loadedEvents
+        .map((event) => normalizeCalendarEvent(event))
+        .filter(Boolean);
+
+      setCalendarStatus(`Viser ${calendarEvents.length} aftaler i ${getCalendarMonthLabel(calendarVisibleMonth)}.`);
+      renderCalendarGrid();
+      renderCalendarAgenda(calendarSelectedDate);
+    } catch (error) {
+      const message = error?.message || "Ukendt fejl";
+      if (isConsentRequiredMessage(message)) {
+        setCalendarStatus("Kalenderdata kræver admin-godkendelse i blind.dk. Kalenderen kan stadig bruges lokalt (dag/uge/måned), men Outlook-aftaler kan ikke hentes endnu.");
+      } else {
+        setCalendarStatus(`Kunne ikke hente kalender: ${message}`);
+      }
+      calendarEvents = [];
+      renderCalendarGrid();
+      renderCalendarAgenda(calendarSelectedDate);
+    } finally {
+      calendarLoading = false;
+    }
+  }
+
+  async function moveCalendarMonth(deltaMonths) {
+    calendarVisibleMonth = new Date(calendarVisibleMonth.getFullYear(), calendarVisibleMonth.getMonth() + deltaMonths, 1);
+    calendarSelectedDate = new Date(calendarVisibleMonth.getFullYear(), calendarVisibleMonth.getMonth(), 1);
+    await loadCalendarEvents(true);
   }
 
   function renderInboxMessages(messages) {
@@ -2062,18 +3295,50 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    if (!hasPortalPermission("portal.mail")) {
+      setResourceStatus("Du har ikke adgang til Mail i portalen.");
+      return;
+    }
+
     hidePortalViews();
     mailView.classList.remove("is-hidden");
     setMailStatus("Udfyld mailfelterne og tryk Send mail.");
     setResourceStatus("Mailformular er åbnet i portalen.");
     updateMailPreviewVisibility();
+
+    // Initialize calendar UI immediately so mode/day controls are usable
+    // even while Graph data is still loading.
+    setCalendarViewMode(calendarViewMode);
+    setCalendarDraftFromDate(calendarSelectedDate, null);
+    setCalendarStatus("Initialiserer kalender...");
+
     try {
       await loadMailFolders(true);
       await loadMessagesForSelectedFolder(false);
+      void loadCalendarEvents(false);
+      setCalendarDraftFromDate(calendarSelectedDate, null);
     } catch {
       // Statustekster sættes i de underliggende funktioner.
     }
     mailView.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function openCasesPortal() {
+    if (!casesView) {
+      return;
+    }
+
+    if (!hasPortalPermission("portal.cases.view")) {
+      setResourceStatus("Du har ikke adgang til sagsvisning.");
+      return;
+    }
+
+    hidePortalViews();
+    casesView.classList.remove("is-hidden");
+    setResourceStatus("Sagsvisning er åbnet i portalen.");
+    await loadCases();
+    startCasesAutoRefresh();
+    casesView.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function createFormField(field) {
@@ -2119,6 +3384,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderPortalForm(formType) {
     if (!portalForm || !formsView || !formsTitle || !formsDescription) {
+      return;
+    }
+
+    if (!hasPortalPermission("portal.forms")) {
+      setResourceStatus("Du har ikke adgang til formularer.");
       return;
     }
 
@@ -2238,8 +3508,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  let portalAuthorization = {
+    role: "requester",
+    permissions: [],
+  };
+
   setAuthUi(false, null);
+  applyPortalAuthorizationToUi();
   initPortalInteractions();
+
+  const isLoopback = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
   if (window.location.protocol === "file:") {
     setAuthStatus("Login kræver hosting på https:// eller http://localhost. Åbn ikke via file://.");
@@ -2249,7 +3527,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  if (!window.msal || !window.msal.PublicClientApplication) {
+  if (isLoopback && (!window.msal || !window.msal.PublicClientApplication)) {
     setAuthStatus("MSAL bibliotek kunne ikke indlæses. Kontrollér internetforbindelse.");
     if (loginButton) {
       loginButton.disabled = true;
@@ -2257,7 +3535,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  if (clientId === placeholderClientId) {
+  if (isLoopback && clientId === placeholderClientId) {
     setAuthStatus("Konfiguration mangler: indsæt jeres App (client) ID i script.js.");
     if (loginButton) {
       loginButton.disabled = true;
@@ -2265,9 +3543,11 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  const isLoopback = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  const canonicalLocalRedirectUri = "http://localhost:5500/index.html";
-  const redirectUri = isLoopback ? canonicalLocalRedirectUri : window.location.origin + window.location.pathname;
+  const redirectUri = window.location.origin + window.location.pathname;
+  const serverLoginUrl = `/.auth/login/aad?post_login_redirect_uri=${encodeURIComponent(window.location.pathname || "/")}&domain_hint=blind.dk&prompt=login`;
+  const serverLogoutUrl = `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(window.location.origin + (window.location.pathname || "/"))}`;
+  const serverLoginAttemptStorageKey = "dbsPortalServerLoginAttemptAt";
+  const serverLoginCooldownMs = 30000;
 
   const msalConfig = {
     auth: {
@@ -2283,11 +3563,451 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const loginRequest = {
-    scopes: graphScopes,
+    scopes: portalLoginScopes,
   };
 
-  const msalInstance = new window.msal.PublicClientApplication(msalConfig);
+  const msalInstance = window.msal && window.msal.PublicClientApplication
+    ? new window.msal.PublicClientApplication(msalConfig)
+    : null;
   let isMsalReady = false;
+  let serverAuthenticatedUser = null;
+  let graphInteractionPromise = null;
+  const graphPendingActionStorageKey = "dbsPortalPendingGraphAction";
+  const graphRedirectStartedCode = "graph_redirect_started";
+  const localMsalDefaultAuthorization = {
+    role: "requester",
+    permissions: ["portal.forms", "portal.cases.view", "portal.cases.read.own"],
+  };
+  const authGroupClaimTypes = new Set([
+    "groups",
+    "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups",
+    "http://schemas.microsoft.com/identity/claims/groups",
+  ]);
+  const graphProtectionNotice = "Graph-funktioner i browseren er slået fra her, fordi tenantens tokenbeskyttelse blokerer SPA-adgang. Sager, formularer og lokale editorer virker stadig.";
+
+  function isServerAuthenticated() {
+    return !!serverAuthenticatedUser;
+  }
+
+  function getActiveOrFirstAccount() {
+    if (!msalInstance) {
+      return null;
+    }
+
+    return msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
+  }
+
+  function getLocalIdentityHeaders() {
+    const account = getActiveOrFirstAccount();
+    if (!account) {
+      return {};
+    }
+
+    const claims = account.idTokenClaims || {};
+    const claimEmailCandidates = [
+      claims.preferred_username,
+      claims.upn,
+      Array.isArray(claims.emails) ? claims.emails[0] : claims.emails,
+      account.username,
+    ];
+    const email = String(claimEmailCandidates.find((value) => String(value || "").trim()) || "").trim();
+    if (!email) {
+      return {};
+    }
+
+    const name = String(account.name || claims.name || email).trim();
+    const objectId = String(claims.oid || claims.objectId || "").trim();
+    const groups = Array.isArray(claims.groups)
+      ? claims.groups.map((entry) => String(entry || "").trim()).filter(Boolean)
+      : [];
+
+    const domain = email.includes("@") ? email.split("@")[1] : "";
+    const nameParts = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .map((part) => part.replace(/[^a-zA-Z0-9.-]/g, "").toLowerCase())
+      .filter(Boolean);
+    const derivedNameEmail = (domain && nameParts.length >= 2)
+      ? `${nameParts[0]}.${nameParts[nameParts.length - 1]}@${domain}`
+      : "";
+    const emailCandidates = [...new Set([
+      ...claimEmailCandidates.map((value) => String(value || "").trim()).filter(Boolean),
+      derivedNameEmail,
+    ])];
+
+    const headers = {
+      "x-dbs-user-email": email,
+      "x-dbs-user-name": name,
+    };
+
+    if (objectId) {
+      headers["x-dbs-user-id"] = objectId;
+    }
+
+    if (groups.length > 0) {
+      headers["x-dbs-user-groups"] = groups.join(",");
+    }
+
+    if (emailCandidates.length > 0) {
+      headers["x-dbs-user-email-candidates"] = emailCandidates.join(",");
+    }
+
+    return headers;
+  }
+
+  function getCurrentUserEmailForUi() {
+    const serverEmail = String(serverAuthenticatedUser?.email || "").trim();
+    if (serverEmail) {
+      return serverEmail;
+    }
+
+    const account = getActiveOrFirstAccount();
+    const claims = account?.idTokenClaims || {};
+    const claimEmailCandidates = [
+      claims.preferred_username,
+      claims.upn,
+      Array.isArray(claims.emails) ? claims.emails[0] : claims.emails,
+      account?.username,
+    ];
+    return String(claimEmailCandidates.find((value) => String(value || "").trim()) || "").trim();
+  }
+
+  function normalizePermissionList(permissions) {
+    if (!Array.isArray(permissions)) {
+      return [];
+    }
+
+    return permissions
+      .map((permission) => String(permission || "").trim())
+      .filter(Boolean);
+  }
+
+  function hasPortalPermission(permission) {
+    const permissionList = normalizePermissionList(portalAuthorization?.permissions);
+    if (permissionList.includes("*")) {
+      return true;
+    }
+
+    return permissionList.includes(permission);
+  }
+
+  function mapAuthMeEntries(payload) {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+
+    if (Array.isArray(payload?.clientPrincipal)) {
+      return payload.clientPrincipal;
+    }
+
+    if (payload?.clientPrincipal && typeof payload.clientPrincipal === "object") {
+      return [payload.clientPrincipal];
+    }
+
+    if (payload?.user_claims) {
+      return [payload];
+    }
+
+    if (payload?.claims) {
+      return [payload];
+    }
+
+    return [];
+  }
+
+  function normalizeAuthMeResponse(payload) {
+    const entries = mapAuthMeEntries(payload);
+    const firstEntry = entries[0] || null;
+    if (!firstEntry) {
+      return null;
+    }
+
+    const claims = Array.isArray(firstEntry.user_claims)
+      ? firstEntry.user_claims
+      : Array.isArray(firstEntry.claims)
+        ? firstEntry.claims
+        : [];
+
+    const findClaim = (type) => {
+      const match = claims.find((claim) => String(claim?.typ || claim?.type || '').toLowerCase() === type.toLowerCase());
+      return String(match?.val || match?.value || '').trim();
+    };
+
+    const groups = claims
+      .filter((claim) => authGroupClaimTypes.has(String(claim?.typ || claim?.type || '').trim().toLowerCase()))
+      .flatMap((claim) => String(claim?.val || claim?.value || '').split(','))
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    const email = String(firstEntry.user_details || firstEntry.userDetails || findClaim('preferred_username') || findClaim('emails') || '').trim();
+    const name = String(findClaim('name') || firstEntry.user_name || firstEntry.userName || firstEntry.user_details || firstEntry.userDetails || email || '').trim();
+
+    return {
+      user: {
+        id: String(firstEntry.user_id || firstEntry.userId || findClaim('http://schemas.microsoft.com/identity/claims/objectidentifier') || '').trim(),
+        name: name || email || 'Ukendt bruger',
+        email: email || name,
+        provider: String(firstEntry.identity_provider || firstEntry.identityProvider || firstEntry.auth_typ || firstEntry.authenticationType || 'aad').trim() || 'aad',
+        groups,
+      },
+    };
+  }
+
+  function setPortalAuthorization(authorization) {
+    const normalized = {
+      role: String(authorization?.role || "requester").trim().toLowerCase() || "requester",
+      permissions: normalizePermissionList(authorization?.permissions),
+    };
+
+    portalAuthorization = normalized;
+  }
+
+  function clearServerLoginAttempt() {
+    try {
+      window.sessionStorage.removeItem(serverLoginAttemptStorageKey);
+    } catch {
+      // Ignore session storage failures.
+    }
+  }
+
+  function getLastServerLoginAttemptAt() {
+    try {
+      const rawValue = window.sessionStorage.getItem(serverLoginAttemptStorageKey);
+      const parsedValue = Number(rawValue);
+      return Number.isFinite(parsedValue) ? parsedValue : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function shouldThrottleServerLoginRedirect() {
+    const lastAttemptAt = getLastServerLoginAttemptAt();
+    if (!lastAttemptAt) {
+      return false;
+    }
+
+    return Date.now() - lastAttemptAt < serverLoginCooldownMs;
+  }
+
+  function redirectToServerLogin(statusMessage) {
+    try {
+      window.sessionStorage.setItem(serverLoginAttemptStorageKey, String(Date.now()));
+    } catch {
+      // Ignore session storage failures.
+    }
+
+    if (statusMessage) {
+      setAuthStatus(statusMessage);
+    }
+
+    window.location.assign(serverLoginUrl);
+  }
+
+  function setPendingGraphAction(action, payload = {}) {
+    if (!action) {
+      return;
+    }
+
+    try {
+      const value = JSON.stringify({
+        action: String(action).trim(),
+        payload: payload && typeof payload === "object" ? payload : {},
+      });
+      window.sessionStorage.setItem(graphPendingActionStorageKey, value);
+    } catch {
+      // Ignore session storage failures.
+    }
+  }
+
+  function getPendingGraphAction() {
+    try {
+      const rawValue = window.sessionStorage.getItem(graphPendingActionStorageKey);
+      if (!rawValue) {
+        return null;
+      }
+
+      const parsed = JSON.parse(rawValue);
+      const action = String(parsed?.action || "").trim();
+      if (!action) {
+        return null;
+      }
+
+      return {
+        action,
+        payload: parsed?.payload && typeof parsed.payload === "object" ? parsed.payload : {},
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function clearPendingGraphAction() {
+    try {
+      window.sessionStorage.removeItem(graphPendingActionStorageKey);
+    } catch {
+      // Ignore session storage failures.
+    }
+  }
+
+  function createGraphRedirectStartedError() {
+    const error = new Error("Videresender til Microsoft-login for at fuldfoere adgangen.");
+    error.errorCode = graphRedirectStartedCode;
+    return error;
+  }
+
+  function isGraphRedirectStartedError(error) {
+    const code = String(error?.errorCode || "").toLowerCase();
+    return code === graphRedirectStartedCode;
+  }
+
+  function setMenuActionAvailability(button, allowed, reason) {
+    if (!button) {
+      return;
+    }
+
+    button.disabled = !allowed;
+
+    if (allowed) {
+      button.removeAttribute("aria-disabled");
+      button.removeAttribute("title");
+      return;
+    }
+
+    button.setAttribute("aria-disabled", "true");
+    if (reason) {
+      button.title = reason;
+    }
+  }
+
+  function applyPortalAuthorizationToUi() {
+    const deniedReason = "Din rolle har ikke adgang til denne funktion.";
+
+    setMenuActionAvailability(mailPortalButton, hasPortalPermission("portal.mail"), deniedReason);
+    setMenuActionAvailability(wordPortalButton, hasPortalPermission("portal.word"), deniedReason);
+    setMenuActionAvailability(excelPortalButton, hasPortalPermission("portal.excel"), deniedReason);
+    setMenuActionAvailability(sharepointPortalButton, hasPortalPermission("portal.sharepoint"), deniedReason);
+    setMenuActionAvailability(oneDrivePortalButton, hasPortalPermission("portal.onedrive"), deniedReason);
+    setMenuActionAvailability(teamsPortalButton, hasPortalPermission("portal.teams"), deniedReason);
+    setMenuActionAvailability(casesPortalButton, hasPortalPermission("portal.cases.view"), deniedReason);
+
+    formPortalButtons.forEach((button) => {
+      setMenuActionAvailability(button, hasPortalPermission("portal.forms"), deniedReason);
+    });
+  }
+
+  function setGraphFeatureAvailability(enabled, reason = "") {
+    const graphButtons = [
+      { button: mailPortalButton, permission: "portal.mail" },
+      { button: sharepointPortalButton, permission: "portal.sharepoint" },
+      { button: oneDrivePortalButton, permission: "portal.onedrive" },
+      { button: teamsPortalButton, permission: "portal.teams" },
+      { button: wordSaveOneDriveButton, permission: "portal.onedrive" },
+      { button: wordSaveSharePointButton, permission: "portal.sharepoint" },
+      { button: excelSaveOneDriveButton, permission: "portal.onedrive" },
+      { button: excelSaveSharePointButton, permission: "portal.sharepoint" },
+    ];
+
+    graphButtons.forEach(({ button, permission }) => {
+      if (!button) {
+        return;
+      }
+
+      const allowedByRole = hasPortalPermission(permission);
+      const allowed = enabled && allowedByRole;
+      button.disabled = !allowed;
+
+      if (!allowed) {
+        button.setAttribute("aria-disabled", "true");
+        button.title = allowedByRole ? reason : "Din rolle har ikke adgang til denne funktion.";
+      } else {
+        button.removeAttribute("title");
+        button.removeAttribute("aria-disabled");
+      }
+    });
+  }
+
+  async function detectServerAuthorization() {
+    try {
+      const authzResponse = await fetch("/api/authz/me", {
+        cache: "no-store",
+        credentials: "include",
+        headers: {
+          ...getLocalIdentityHeaders(),
+        },
+      });
+
+      if (authzResponse.ok) {
+        const authzPayload = await authzResponse.json();
+        if (authzPayload?.authenticated && authzPayload?.user) {
+          return {
+            user: authzPayload.user,
+            authorization: authzPayload.authorization || null,
+          };
+        }
+      }
+
+      const response = await fetch("/.auth/me", { cache: "no-store", credentials: "include" });
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = await response.json();
+      const normalized = normalizeAuthMeResponse(payload);
+      if (!normalized?.user) {
+        return null;
+      }
+
+      return {
+        user: normalized.user,
+        authorization: null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function detectServerAuthenticatedUser() {
+    try {
+      const response = await fetch("/.auth/me", { cache: "no-store", credentials: "include" });
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = await response.json();
+      return normalizeAuthMeResponse(payload)?.user || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function isTokenProtectionError(error) {
+    const text = String(error?.message || error || "").toLowerCase();
+    return text.includes("tokenbeskyttelse")
+      || text.includes("token protection")
+      || text.includes("forhindrer dette program i at få adgang til ressourcen")
+      || text.includes("prevents this program from accessing the resource");
+  }
+
+  function isInteractionInProgressError(error) {
+    const code = String(error?.errorCode || "").toLowerCase();
+    const message = String(error?.message || error || "").toLowerCase();
+    return code === "interaction_in_progress"
+      || message.includes("interaction_in_progress")
+      || message.includes("interaction is currently in progress");
+  }
+
+  async function runGraphInteraction(interactionFactory) {
+    if (graphInteractionPromise) {
+      await graphInteractionPromise;
+    }
+
+    graphInteractionPromise = (async () => interactionFactory())();
+    try {
+      return await graphInteractionPromise;
+    } finally {
+      graphInteractionPromise = null;
+    }
+  }
 
   function setSharepointStatus(message) {
     if (sharepointStatus) {
@@ -2522,9 +4242,81 @@ document.addEventListener("DOMContentLoaded", () => {
       || message.includes("window.open");
   }
 
-  async function acquireGraphToken(interactiveAllowed, forceConsent = false, requestedScopes = graphScopes) {
-    const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
+  async function acquireGraphToken(interactiveAllowed, forceConsent = false, requestedScopes = mailGraphScopes, options = {}) {
+    if (!msalInstance) {
+      throw new Error("Graph-login er ikke tilgængelig i denne session.");
+    }
+
+    const allowRedirect = options?.allowRedirect === true;
+    const pendingAction = options?.pendingAction || null;
+    const requestRedirect = async (request) => {
+      if (pendingAction?.action) {
+        setPendingGraphAction(pendingAction.action, pendingAction.payload || {});
+      }
+
+      await msalInstance.acquireTokenRedirect(request);
+      throw createGraphRedirectStartedError();
+    };
+
+    let account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
+    if (!account && isServerAuthenticated()) {
+      const loginHint = String(serverAuthenticatedUser?.email || "").trim();
+
+      if (!interactiveAllowed) {
+        try {
+          const silentResult = await msalInstance.ssoSilent({
+            scopes: requestedScopes,
+            loginHint: loginHint || undefined,
+          });
+          if (silentResult?.account) {
+            msalInstance.setActiveAccount(silentResult.account);
+            account = silentResult.account;
+          }
+        } catch {
+          // Silent bootstrap can fail if there is no browser session yet.
+        }
+      } else {
+        if (allowRedirect) {
+          if (pendingAction?.action) {
+            setPendingGraphAction(pendingAction.action, pendingAction.payload || {});
+          }
+
+          await msalInstance.loginRedirect({
+            scopes: requestedScopes,
+            loginHint: loginHint || undefined,
+            prompt: forceConsent ? "consent" : "select_account",
+          });
+          throw createGraphRedirectStartedError();
+        }
+
+        try {
+          const loginResult = await runGraphInteraction(() => msalInstance.loginPopup({
+            scopes: requestedScopes,
+            loginHint: loginHint || undefined,
+            prompt: forceConsent ? "consent" : "select_account",
+          }));
+          if (loginResult?.account) {
+            msalInstance.setActiveAccount(loginResult.account);
+            account = loginResult.account;
+          }
+        } catch (error) {
+          if (isInteractionInProgressError(error)) {
+            if (graphInteractionPromise) {
+              await graphInteractionPromise;
+              account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
+    }
+
     if (!account) {
+      if (isServerAuthenticated()) {
+        throw new Error("Du er logget ind til portalen, men Graph-login i browseren er ikke aktiv. Prøv handlingen igen og fuldfør Microsoft-popup'en.");
+      }
+
       throw new Error("Ingen aktiv login-session fundet. Log ind igen.");
     }
 
@@ -2538,27 +4330,82 @@ document.addEventListener("DOMContentLoaded", () => {
       return token.accessToken;
     } catch (error) {
       if (interactiveAllowed) {
-        try {
-          const popupToken = await msalInstance.acquireTokenPopup({
+        if (allowRedirect) {
+          await requestRedirect({
             scopes: tokenRequest.scopes,
             prompt: forceConsent ? "consent" : undefined,
           });
+        }
+
+        try {
+          const popupToken = await runGraphInteraction(() => msalInstance.acquireTokenPopup({
+            scopes: tokenRequest.scopes,
+            prompt: forceConsent ? "consent" : undefined,
+          }));
           return popupToken.accessToken;
         } catch (interactiveError) {
+          if (isTokenProtectionError(interactiveError)) {
+            throw new Error("Tokenbeskyttelse i Microsoft Entra blokerer denne browserapp fra at hente Graph-token. Portalen kan godt beskyttes med Microsoft-login, men Graph-funktioner kræver en understøttet klient eller en ændring i Conditional Access-politikken.");
+          }
+
+          if (isInteractionInProgressError(interactiveError)) {
+            if (graphInteractionPromise) {
+              await graphInteractionPromise;
+            }
+
+            const retryToken = await msalInstance.acquireTokenSilent(tokenRequest);
+            return retryToken.accessToken;
+          }
+
           if (!isMsalPopupTimeoutError(interactiveError)) {
             throw interactiveError;
           }
 
-          await msalInstance.acquireTokenRedirect({
+          await requestRedirect({
             scopes: tokenRequest.scopes,
             prompt: forceConsent ? "consent" : undefined,
           });
-
-          throw new Error("Omdirigerer til Microsoft for at fuldføre Teams-adgang...");
         }
       }
 
       throw error;
+    }
+  }
+
+  async function resumePendingGraphActionIfNeeded() {
+    if (!isMsalReady || !msalInstance) {
+      return;
+    }
+
+    const pending = getPendingGraphAction();
+    if (!pending?.action) {
+      return;
+    }
+
+    if (!getActiveOrFirstAccount()) {
+      return;
+    }
+
+    try {
+      if (pending.action === "sharepoint") {
+        const path = String(pending.payload?.path || "");
+        await loadSharepointPortal(false, path);
+      } else if (pending.action === "onedrive") {
+        const path = String(pending.payload?.path || "");
+        await loadOnedrivePortal(false, path);
+      } else if (pending.action === "teams") {
+        await openTeamsPortal(false);
+      } else if (pending.action === "mail") {
+        await openMailPortal();
+      }
+
+      clearPendingGraphAction();
+    } catch (error) {
+      if (isGraphRedirectStartedError(error)) {
+        return;
+      }
+
+      clearPendingGraphAction();
     }
   }
 
@@ -2649,7 +4496,7 @@ document.addEventListener("DOMContentLoaded", () => {
       comment: "Hej\n\nTak for din mail. Jeg vender tilbage hurtigst muligt.\n\nVenlig hilsen",
     };
 
-    let accessToken = await acquireGraphToken(interactiveAllowed);
+    let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
 
     const sendReply = async (token) => {
       const response = await fetch(replyUrl, {
@@ -2674,7 +4521,7 @@ document.addEventListener("DOMContentLoaded", () => {
         throw error;
       }
 
-      accessToken = await acquireGraphToken(true, true);
+      accessToken = await acquireGraphToken(true, true, mailGraphScopes);
       await sendReply(accessToken);
     }
   }
@@ -2732,6 +4579,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadSharepointPortal(interactiveAllowed, requestedPath = sharepointCurrentPath) {
+    if (!hasPortalPermission("portal.sharepoint")) {
+      setResourceStatus("Du har ikke adgang til SharePoint i portalen.");
+      return;
+    }
+
     if (!isMsalReady) {
       setSharepointStatus("Login initialiseres stadig. Prøv igen om et øjeblik.");
       return;
@@ -2749,7 +4601,15 @@ document.addEventListener("DOMContentLoaded", () => {
     setSharepointStatus("Henter SharePoint-indhold...");
 
     try {
-      const accessToken = await acquireGraphToken(interactiveAllowed);
+      const accessToken = await acquireGraphToken(interactiveAllowed, false, sharepointReadScopes, {
+        allowRedirect: !isLoopback,
+        pendingAction: {
+          action: "sharepoint",
+          payload: {
+            path: requestedPath,
+          },
+        },
+      });
 
       await ensureSharepointDriveContext(accessToken);
 
@@ -2768,6 +4628,11 @@ document.addEventListener("DOMContentLoaded", () => {
       setSharepointStatus(`Viser ${items.length} elementer fra ${sharepointDriveName}.`);
       sharepointView.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
+      if (isGraphRedirectStartedError(error)) {
+        setSharepointStatus("Fortsætter login i samme fane. Du sendes tilbage til SharePoint automatisk.");
+        return;
+      }
+
       const message = error?.message || "Ukendt fejl";
       setSharepointStatus(`Kunne ikke hente SharePoint-indhold: ${message}`);
       clearSharepointList();
@@ -2775,6 +4640,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadOnedrivePortal(interactiveAllowed, requestedPath = sharepointCurrentPath) {
+    if (!hasPortalPermission("portal.onedrive")) {
+      setResourceStatus("Du har ikke adgang til OneDrive i portalen.");
+      return;
+    }
+
     if (!isMsalReady) {
       setSharepointStatus("Login initialiseres stadig. Prøv igen om et øjeblik.");
       return;
@@ -2792,7 +4662,15 @@ document.addEventListener("DOMContentLoaded", () => {
     setSharepointStatus("Henter OneDrive-indhold...");
 
     try {
-      const accessToken = await acquireGraphToken(interactiveAllowed);
+      const accessToken = await acquireGraphToken(interactiveAllowed, false, sharepointReadScopes, {
+        allowRedirect: !isLoopback,
+        pendingAction: {
+          action: "onedrive",
+          payload: {
+            path: requestedPath,
+          },
+        },
+      });
 
       const encodedPath = encodeGraphPath(requestedPath);
       const childrenUrl = encodedPath
@@ -2809,6 +4687,11 @@ document.addEventListener("DOMContentLoaded", () => {
       setSharepointStatus(`Viser ${items.length} elementer fra din OneDrive.`);
       sharepointView.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
+      if (isGraphRedirectStartedError(error)) {
+        setSharepointStatus("Fortsætter login i samme fane. Du sendes tilbage til OneDrive automatisk.");
+        return;
+      }
+
       const message = error?.message || "Ukendt fejl";
       setSharepointStatus(`Kunne ikke hente OneDrive-indhold: ${message}`);
       clearSharepointList();
@@ -2820,6 +4703,39 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function handleAuthentication() {
+    if (!isLoopback) {
+      try {
+        setAuthStatus("Kontrollerer login...");
+        const serverAuthContext = await detectServerAuthorization();
+        serverAuthenticatedUser = serverAuthContext?.user || null;
+
+        if (!serverAuthenticatedUser) {
+          setPortalAuthorization({ role: "requester", permissions: [] });
+          applyPortalAuthorizationToUi();
+          setAuthUi(false, null);
+          setAuthStatus("Du skal logge ind for at bruge portalen.");
+          return;
+        }
+
+        setPortalAuthorization(serverAuthContext?.authorization || localMsalDefaultAuthorization);
+        applyPortalAuthorizationToUi();
+        setAuthUi(true, {
+          name: serverAuthenticatedUser?.name || serverAuthenticatedUser?.email || "Bruger",
+          username: serverAuthenticatedUser?.email || "",
+        });
+        setAuthStatus("Logget ind.");
+        setGraphFeatureAvailability(true);
+        setResourceStatus("");
+        return;
+      } catch (error) {
+        setPortalAuthorization({ role: "requester", permissions: [] });
+        applyPortalAuthorizationToUi();
+        setAuthUi(false, null);
+        setAuthStatus(`Loginfejl: ${error?.message || "Ukendt fejl"}`);
+        return;
+      }
+    }
+
     try {
       setAuthStatus("Kontrollerer login...");
       const redirectResult = await msalInstance.handleRedirectPromise();
@@ -2831,24 +4747,65 @@ document.addEventListener("DOMContentLoaded", () => {
       const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
 
       if (account) {
+        clearServerLoginAttempt();
+        const serverAuthContext = await detectServerAuthorization();
+        serverAuthenticatedUser = serverAuthContext?.user || null;
+
+        if (!serverAuthenticatedUser) {
+          const fallbackUser = await detectServerAuthenticatedUser();
+          if (fallbackUser) {
+            serverAuthenticatedUser = fallbackUser;
+          }
+        }
+
+        setPortalAuthorization(serverAuthContext?.authorization || localMsalDefaultAuthorization);
+        applyPortalAuthorizationToUi();
         setAuthUi(true, account);
         setAuthStatus("Logget ind.");
+        setGraphFeatureAvailability(true);
+        setResourceStatus("");
       } else {
+        setPortalAuthorization({ role: "requester", permissions: [] });
+        applyPortalAuthorizationToUi();
         setAuthUi(false, null);
         setAuthStatus("Du skal logge ind for at bruge portalen.");
       }
     } catch (error) {
+      setPortalAuthorization({ role: "requester", permissions: [] });
+      applyPortalAuthorizationToUi();
       setAuthUi(false, null);
+      if (isTokenProtectionError(error)) {
+        setAuthStatus("Loginfejl: Microsoft Entra tokenbeskyttelse blokerer denne browserapp. Jeg anbefaler serverbaseret login for portalen og en separat løsning for Graph-funktioner.");
+        return;
+      }
+
       setAuthStatus(`Loginfejl: ${error?.message || "Ukendt fejl"}`);
     }
   }
 
   if (loginButton) {
     loginButton.addEventListener("click", () => {
+      if (!isLoopback) {
+        if (shouldThrottleServerLoginRedirect()) {
+          setAuthStatus("Microsoft-login blev ikke fuldført. Vent et øjeblik og prøv igen.");
+          return;
+        }
+
+        redirectToServerLogin("Sender dig til Microsoft login...");
+        return;
+      }
+
       if (!isMsalReady) {
         setAuthStatus("Login initialiseres, prøv igen om et øjeblik.");
         return;
       }
+
+      if (!isLoopback && shouldThrottleServerLoginRedirect()) {
+        setAuthStatus("Microsoft-login blev ikke fuldført. Vent et øjeblik og prøv igen.");
+        return;
+      }
+
+      clearServerLoginAttempt();
       setAuthStatus("Sender dig til Microsoft login...");
       msalInstance.loginRedirect(loginRequest);
     });
@@ -2856,6 +4813,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (logoutButton) {
     logoutButton.addEventListener("click", () => {
+      if (!isLoopback) {
+        window.location.assign(serverLogoutUrl);
+        return;
+      }
+
       if (!isMsalReady) {
         return;
       }
@@ -2896,6 +4858,82 @@ document.addEventListener("DOMContentLoaded", () => {
   if (mailPortalButton) {
     mailPortalButton.addEventListener("click", () => {
       openMailPortal();
+    });
+  }
+
+  if (mailCalendarModeMonthButton) {
+    mailCalendarModeMonthButton.addEventListener("click", () => setCalendarViewMode("month"));
+  }
+
+  if (mailCalendarModeWeekButton) {
+    mailCalendarModeWeekButton.addEventListener("click", () => setCalendarViewMode("week"));
+  }
+
+  if (mailCalendarModeWorkweekButton) {
+    mailCalendarModeWorkweekButton.addEventListener("click", () => setCalendarViewMode("workweek"));
+  }
+
+  if (mailCalendarDraftCopyButton) {
+    mailCalendarDraftCopyButton.addEventListener("click", () => {
+      copyCalendarDraftText();
+      setCalendarStatus("Mødekladden er kopieret til udklipsholderen.");
+    });
+  }
+
+  if (mailCalendarDraftIcsButton) {
+    mailCalendarDraftIcsButton.addEventListener("click", () => {
+      downloadCalendarDraftIcs();
+      setCalendarStatus("Mødeinvitationen er hentet som .ics-fil.");
+    });
+  }
+
+  if (mailCalendarDraftClearButton) {
+    mailCalendarDraftClearButton.addEventListener("click", () => {
+      calendarDraft = {
+        subject: "",
+        date: new Date(),
+        start: "09:00",
+        end: "10:00",
+        location: "",
+      };
+      setCalendarDraftFromDate(calendarSelectedDate, null);
+      if (mailCalendarDraftSubject) {
+        mailCalendarDraftSubject.value = "";
+      }
+      if (mailCalendarDraftLocation) {
+        mailCalendarDraftLocation.value = "";
+      }
+      if (mailCalendarDraftStart) {
+        mailCalendarDraftStart.value = "09:00";
+      }
+      if (mailCalendarDraftEnd) {
+        mailCalendarDraftEnd.value = "10:00";
+      }
+      setCalendarStatus("Mødekladden er ryddet.");
+    });
+  }
+
+  if (casesPortalButton) {
+    casesPortalButton.addEventListener("click", () => {
+      openCasesPortal();
+    });
+  }
+
+  if (casesFilterOpenButton) {
+    casesFilterOpenButton.addEventListener("click", () => {
+      setCaseViewFilter("open");
+    });
+  }
+
+  if (casesFilterClosedButton) {
+    casesFilterClosedButton.addEventListener("click", () => {
+      setCaseViewFilter("closed");
+    });
+  }
+
+  if (casesFilterAllButton) {
+    casesFilterAllButton.addEventListener("click", () => {
+      setCaseViewFilter("all");
     });
   }
 
@@ -3080,6 +5118,40 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadMessagesForSelectedFolder(false);
     });
   }
+
+  if (mailCalendarRefreshButton) {
+    mailCalendarRefreshButton.addEventListener("click", async () => {
+      await loadCalendarEvents(true);
+    });
+  }
+
+  if (mailCalendarPrevButton) {
+    mailCalendarPrevButton.addEventListener("click", async () => {
+      await moveCalendarMonth(-1);
+    });
+  }
+
+  if (mailCalendarTodayButton) {
+    mailCalendarTodayButton.addEventListener("click", async () => {
+      calendarVisibleMonth = getCalendarStartOfMonth(new Date());
+      calendarSelectedDate = new Date();
+      await loadCalendarEvents(true);
+    });
+  }
+
+  if (mailCalendarNextButton) {
+    mailCalendarNextButton.addEventListener("click", async () => {
+      await moveCalendarMonth(1);
+    });
+  }
+
+  if (casesRefreshButton) {
+    casesRefreshButton.addEventListener("click", async () => {
+      await loadCases();
+    });
+  }
+
+  updateCaseFilterButtons();
 
   if (teamsRefreshButton) {
     teamsRefreshButton.addEventListener("click", async () => {
@@ -3618,7 +5690,51 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function initializeCalendarUi() {
+    if (!mailCalendarGrid || !mailCalendarAgenda) {
+      return;
+    }
+
+    setCalendarViewMode(calendarViewMode);
+    setCalendarDraftFromDate(calendarSelectedDate, null);
+    if (!calendarLoading) {
+      setCalendarStatus("Kalender klar. Tryk Opdater kalender for at hente aftaler.");
+    }
+  }
+
   async function bootstrapAuth() {
+    if (!msalInstance && isLoopback) {
+      setAuthStatus("MSAL bibliotek kunne ikke indlæses. Kontrollér internetforbindelse.");
+      if (loginButton) {
+        loginButton.disabled = true;
+      }
+      return;
+    }
+
+    if (!isLoopback) {
+      if (loginButton) {
+        loginButton.disabled = false;
+      }
+
+      if (msalInstance) {
+        try {
+          await msalInstance.initialize();
+          isMsalReady = true;
+          const redirectResult = await msalInstance.handleRedirectPromise();
+          if (redirectResult?.account) {
+            msalInstance.setActiveAccount(redirectResult.account);
+          }
+        } catch {
+          // Cloud portal can continue with server-side auth if MSAL init fails.
+          isMsalReady = false;
+        }
+      }
+
+      await handleAuthentication();
+      await resumePendingGraphActionIfNeeded();
+      return;
+    }
+
     try {
       setAuthStatus("Initialiserer login...");
       await msalInstance.initialize();
@@ -3629,6 +5745,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       await handleAuthentication();
+      await resumePendingGraphActionIfNeeded();
     } catch (error) {
       setAuthStatus(`Loginfejl: ${error?.message || "Ukendt fejl"}`);
       if (loginButton) {
@@ -3637,5 +5754,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  initializeCalendarUi();
   bootstrapAuth();
 });

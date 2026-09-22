@@ -9,6 +9,8 @@
 # Build output
 bin/
 obj/
+**/bin/
+**/obj/
 
 # ClickOnce publish artifacts
 *.application
@@ -17,11 +19,23 @@ app.publish/
 # Logs and diagnostics
 *.log
 
+# Local secret overrides
+ITSupportSystem/appsettings.local.json
+
 # Node dependencies and cache
+**/node_modules/
 Website/node_modules/
+Web-Upload/node_modules/
+archive/Web-Upload-legacy/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 Website/npm-debug.log*
 Website/yarn-debug.log*
 Website/yarn-error.log*
+Web-Upload/npm-debug.log*
+Web-Upload/yarn-debug.log*
+Web-Upload/yarn-error.log*
 
 # OS files
 .DS_Store

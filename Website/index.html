@@ -118,6 +118,20 @@
         </li>
         <li class="dropdown">
           <button type="button" class="dropbtn" aria-haspopup="true" aria-expanded="false">
+            Sager
+            <span class="visually-hidden">menu</span>
+          </button>
+          <ul class="dropdown-content">
+            <li>
+              <button type="button" class="menu-action open-cases-portal" data-resource-name="Sagsvisning i portal">
+                Sagsvisning i portal
+                <span class="visually-hidden">(viser historik pr. sag)</span>
+              </button>
+            </li>
+          </ul>
+        </li>
+        <li class="dropdown">
+          <button type="button" class="dropbtn" aria-haspopup="true" aria-expanded="false">
             Brugeradministration
             <span class="visually-hidden">menu</span>
           </button>
@@ -182,6 +196,33 @@
             <h3 id="teams-channels-title">Kanaler</h3>
             <ul class="teams-channel-list" id="teams-channel-list"></ul>
           </section>
+        </div>
+      </section>
+
+      <section class="cases-view is-hidden" id="cases-view" aria-live="polite" aria-label="Sagsvisning">
+        <div class="cases-view-header">
+          <h2>Sagsvisning</h2>
+          <button type="button" class="refresh-button" id="cases-refresh">Opdater</button>
+        </div>
+        <p class="cases-help">Åbn en sag for at se alle indgående og udgående beskeder samlet ét sted.</p>
+        <div class="cases-filter" role="tablist" aria-label="Filtrer sager">
+          <button type="button" class="cases-filter-button is-active" id="cases-filter-open" data-case-filter="open" role="tab" aria-selected="true">Alle åbne sager</button>
+          <button type="button" class="cases-filter-button" id="cases-filter-closed" data-case-filter="closed" role="tab" aria-selected="false">Alle lukkede sager</button>
+          <button type="button" class="cases-filter-button" id="cases-filter-all" data-case-filter="all" role="tab" aria-selected="false">Alle sager</button>
+        </div>
+        <p class="cases-status" id="cases-status">Ingen sager er indlæst endnu.</p>
+        <div class="cases-grid">
+          <section class="cases-panel" aria-label="Sagsliste">
+            <div class="cases-panel-header">
+              <h3 id="cases-list-title">Alle åbne sager</h3>
+              <p class="cases-panel-meta" id="cases-count">0 sager</p>
+            </div>
+            <ul class="cases-list" id="cases-list"></ul>
+          </section>
+          <article class="cases-panel cases-detail" id="cases-detail" aria-live="polite" role="region" aria-label="Detaljer for valgt sag" tabindex="-1">
+            <h3>Vælg en sag</h3>
+            <p>Vælg en sag i listen for at se historikken.</p>
+          </article>
         </div>
       </section>
 
@@ -265,6 +306,78 @@
               <button type="reset" class="secondary-button">Ryd felter</button>
             </div>
           </form>
+        </section>
+
+        <section class="mail-calendar" aria-label="Kalender i portal">
+          <div class="mail-calendar-header">
+            <div>
+              <h3>Kalender</h3>
+              <p class="mail-calendar-help">Kalenderen bruger dine Outlook-møder og viser både måned og dagsagenda.</p>
+            </div>
+            <div class="mail-calendar-actions">
+              <button type="button" class="refresh-button" id="mail-calendar-refresh">Opdater kalender</button>
+              <button type="button" class="refresh-button" id="mail-calendar-prev">Forrige</button>
+              <button type="button" class="refresh-button" id="mail-calendar-today">I dag</button>
+              <button type="button" class="refresh-button" id="mail-calendar-next">Næste</button>
+            </div>
+          </div>
+          <p class="mail-calendar-status" id="mail-calendar-status">Kalenderen er ikke indlæst endnu.</p>
+          <div class="mail-calendar-view-switch" role="tablist" aria-label="Kalendervisning">
+            <button type="button" class="mail-calendar-view-button is-active" id="mail-calendar-mode-month" role="tab" aria-selected="true">Måned</button>
+            <button type="button" class="mail-calendar-view-button" id="mail-calendar-mode-week" role="tab" aria-selected="false">Uge</button>
+            <button type="button" class="mail-calendar-view-button" id="mail-calendar-mode-workweek" role="tab" aria-selected="false">Arbejdsuge</button>
+          </div>
+          <div class="mail-calendar-toolbar">
+            <p class="mail-calendar-month" id="mail-calendar-month-label">Måned</p>
+          </div>
+          <div class="mail-calendar-body">
+            <section class="mail-calendar-grid-wrap" aria-label="Månedsvisning">
+              <div class="mail-calendar-weekdays" aria-hidden="true">
+                <span>Man</span>
+                <span>Tir</span>
+                <span>Ons</span>
+                <span>Tor</span>
+                <span>Fre</span>
+                <span>Lør</span>
+                <span>Søn</span>
+              </div>
+              <div class="mail-calendar-grid" id="mail-calendar-grid"></div>
+            </section>
+            <aside class="mail-calendar-agenda" id="mail-calendar-agenda" aria-label="Dagsagenda"></aside>
+          </div>
+          <section class="mail-calendar-draft" aria-label="Opret møde">
+            <div class="mail-calendar-draft-header">
+              <h4>Opret møde</h4>
+              <p class="mail-calendar-draft-help">Klik på en dag eller træk et møde til en anden dag for at udfylde kladden.</p>
+            </div>
+            <div class="portal-form-field">
+              <label for="mail-calendar-draft-subject">Emne</label>
+              <input id="mail-calendar-draft-subject" type="text" autocomplete="off" placeholder="Møde med ...">
+            </div>
+            <div class="mail-calendar-draft-grid">
+              <div class="portal-form-field">
+                <label for="mail-calendar-draft-date">Dato</label>
+                <input id="mail-calendar-draft-date" type="date">
+              </div>
+              <div class="portal-form-field">
+                <label for="mail-calendar-draft-start">Start</label>
+                <input id="mail-calendar-draft-start" type="time" value="09:00">
+              </div>
+              <div class="portal-form-field">
+                <label for="mail-calendar-draft-end">Slut</label>
+                <input id="mail-calendar-draft-end" type="time" value="10:00">
+              </div>
+            </div>
+            <div class="portal-form-field">
+              <label for="mail-calendar-draft-location">Sted</label>
+              <input id="mail-calendar-draft-location" type="text" autocomplete="off" placeholder="Teams / mødelokale / link">
+            </div>
+            <div class="portal-form-actions">
+              <button type="button" class="secondary-button" id="mail-calendar-draft-copy">Kopiér mødekladde</button>
+              <button type="button" class="primary-button" id="mail-calendar-draft-ics">Hent .ics</button>
+              <button type="button" class="secondary-button" id="mail-calendar-draft-clear">Ryd kladde</button>
+            </div>
+          </section>
         </section>
       </section>
 
@@ -437,6 +550,6 @@
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <script src="script.js"></script>
+  <script src="script.js?v=20260728-3"></script>
 </body>
 </html>

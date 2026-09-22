@@ -1,11 +1,5 @@
-# Web-Upload
+# Web-Upload (arkiveret)
 
-Denne mappe indeholder kun webversionen af DBS Portal til upload på GitHub.
+Denne mappe er flyttet til archive/Web-Upload-legacy for at holde roden ren.
 
-## Lokal test
-
-1. Kør 
-pm install
-2. Kør 
-pm run serve
-3. Åbn http://localhost:5500/index.html
+Aktiv portal-kode ligger i Website/.

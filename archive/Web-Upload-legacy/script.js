@@ -105,7 +105,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const sharepointSitePath = "/sites/Faelles";
   const sharepointLibraryName = "Delte dokumenter";
   const powerAutomateFlowUrl = "REPLACE_WITH_POWER_AUTOMATE_HTTP_TRIGGER_URL";
-  const graphScopes = ["User.Read", "Sites.Read.All", "Files.Read.All", "Mail.Send", "Mail.Read"];
+  const portalLoginScopes = ["User.Read"];
+  const mailGraphScopes = ["User.Read", "Mail.Send", "Mail.Read"];
+  const sharepointReadScopes = ["User.Read", "Sites.Read.All", "Files.Read.All"];
   const mailReadWriteScopes = ["User.Read", "Mail.ReadWrite"];
   const graphWriteScopes = ["User.Read", "Sites.ReadWrite.All", "Files.ReadWrite.All"];
   const teamsReadScopes = ["User.Read", "Team.ReadBasic.All", "Channel.ReadBasic.All"];
@@ -599,7 +601,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    let accessToken = await acquireGraphToken(interactiveAllowed);
+    let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
     const detailUrl = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(message.id)}?$select=id,subject,from,receivedDateTime,body,bodyPreview`;
 
     let detail;
@@ -612,7 +614,7 @@ document.addEventListener("DOMContentLoaded", () => {
         throw error;
       }
 
-      accessToken = await acquireGraphToken(true, true);
+      accessToken = await acquireGraphToken(true, true, mailGraphScopes);
       detail = await fetchGraph(detailUrl, accessToken, {
         Prefer: 'outlook.body-content-type="text"',
       });
@@ -1292,18 +1294,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setExcelActiveCell(row, col);
   }
 
-  function exportExcelCsv() {
-    ensureExcelDataShape();
-    const csv = excelData
-      .map((row) => row.map((value) => {
-        const text = String(value ?? "");
-        const escaped = text.replace(/"/g, '""');
-        return `"${escaped}"`;
-      }).join(","))
-      .join("\n");
-    return csv;
-  }
-
   function detectDelimitedTextDelimiter(text) {
     const sampleLines = String(text || "")
       .split(/\r?\n/)
@@ -1752,7 +1742,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setMailInboxStatus("Henter mailmapper...");
 
     try {
-      let accessToken = await acquireGraphToken(interactiveAllowed);
+      let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
       const allFolders = [];
       let nextUrl = "https://graph.microsoft.com/v1.0/me/mailFolders?$top=200&$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount";
 
@@ -1766,7 +1756,7 @@ document.addEventListener("DOMContentLoaded", () => {
             throw error;
           }
 
-          accessToken = await acquireGraphToken(true, true);
+          accessToken = await acquireGraphToken(true, true, mailGraphScopes);
           folderResponse = await fetchGraph(nextUrl, accessToken);
         }
 
@@ -1823,7 +1813,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const loadedMessages = [];
 
     try {
-      let accessToken = await acquireGraphToken(interactiveAllowed);
+      let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
 
       while (nextUrl) {
         let messagesResponse;
@@ -1835,7 +1825,7 @@ document.addEventListener("DOMContentLoaded", () => {
             throw error;
           }
 
-          accessToken = await acquireGraphToken(true, true);
+          accessToken = await acquireGraphToken(true, true, mailGraphScopes);
           messagesResponse = await fetchGraph(nextUrl, accessToken);
         }
 
@@ -2071,12 +2061,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setMailStatus("Udfyld mailfelterne og tryk Send mail.");
     setResourceStatus("Mailformular er åbnet i portalen.");
     updateMailPreviewVisibility();
-    try {
-      await loadMailFolders(true);
-      await loadMessagesForSelectedFolder(false);
-    } catch {
-      // Statustekster sættes i de underliggende funktioner.
-    }
+    loadMailFolders(true).catch(() => {});
+    loadMessagesForSelectedFolder(false).catch(() => {});
     mailView.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -2287,7 +2273,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const loginRequest = {
-    scopes: graphScopes,
+    scopes: portalLoginScopes,
   };
 
   const msalInstance = new window.msal.PublicClientApplication(msalConfig);
@@ -2526,7 +2512,7 @@ document.addEventListener("DOMContentLoaded", () => {
       || message.includes("window.open");
   }
 
-  async function acquireGraphToken(interactiveAllowed, forceConsent = false, requestedScopes = graphScopes) {
+  async function acquireGraphToken(interactiveAllowed, forceConsent = false, requestedScopes = mailGraphScopes) {
     const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0] || null;
     if (!account) {
       throw new Error("Ingen aktiv login-session fundet. Log ind igen.");
@@ -2653,7 +2639,7 @@ document.addEventListener("DOMContentLoaded", () => {
       comment: "Hej\n\nTak for din mail. Jeg vender tilbage hurtigst muligt.\n\nVenlig hilsen",
     };
 
-    let accessToken = await acquireGraphToken(interactiveAllowed);
+    let accessToken = await acquireGraphToken(interactiveAllowed, false, mailGraphScopes);
 
     const sendReply = async (token) => {
       const response = await fetch(replyUrl, {
@@ -2678,7 +2664,7 @@ document.addEventListener("DOMContentLoaded", () => {
         throw error;
       }
 
-      accessToken = await acquireGraphToken(true, true);
+      accessToken = await acquireGraphToken(true, true, mailGraphScopes);
       await sendReply(accessToken);
     }
   }
@@ -2753,7 +2739,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setSharepointStatus("Henter SharePoint-indhold...");
 
     try {
-      const accessToken = await acquireGraphToken(interactiveAllowed);
+      const accessToken = await acquireGraphToken(interactiveAllowed, false, sharepointReadScopes);
 
       await ensureSharepointDriveContext(accessToken);
 
@@ -2796,7 +2782,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setSharepointStatus("Henter OneDrive-indhold...");
 
     try {
-      const accessToken = await acquireGraphToken(interactiveAllowed);
+      const accessToken = await acquireGraphToken(interactiveAllowed, false, sharepointReadScopes);
 
       const encodedPath = encodeGraphPath(requestedPath);
       const childrenUrl = encodedPath
